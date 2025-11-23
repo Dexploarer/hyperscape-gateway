@@ -1,0 +1,52 @@
+{
+  "name": "@hyperscape/plugin-gateway",
+  "version": "0.1.0",
+  "description": "Unified AI gateway for ElizaOS using Vercel AI SDK and OpenRouter",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "^1.0.0",
+    "ai": "^4.0.0",
+    "@ai-sdk/openai": "^1.0.0",
+    "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/google": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "^1.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "ai-gateway",
+    "vercel-ai",
+    "openrouter",
+    "llm",
+    "openai",
+    "anthropic",
+    "google"
+  ],
+  "author": "Hyperscape",
+  "license": "MIT"
+}
