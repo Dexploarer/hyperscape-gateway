@@ -50,11 +50,12 @@ export * from "./providers";
 
 /**
  * Default gateway configuration
+ * Uses Vercel AI Gateway by default (zero markup, recommended)
  */
 const DEFAULT_CONFIG: GatewayConfig = {
-  defaultTextProvider: "openrouter",
-  defaultEmbeddingProvider: "openrouter",
-  defaultImageProvider: "openrouter",
+  defaultTextProvider: "vercel-gateway",
+  defaultEmbeddingProvider: "vercel-gateway",
+  defaultImageProvider: "vercel-gateway",
   models: {
     textLarge: "claude-sonnet-4",
     textSmall: "gpt-4o-mini",
