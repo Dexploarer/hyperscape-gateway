@@ -1,5 +1,5 @@
 {
-  "name": "@hyperscape/plugin-gateway",
+  "name": "@dexploarer/plugin-gateway",
   "version": "0.1.0",
   "description": "Unified AI gateway for ElizaOS using Vercel AI SDK and OpenRouter",
   "type": "module",
@@ -49,5 +49,12 @@
     "google"
   ],
   "author": "Hyperscape",
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dexploarer/hyperscape-gateway.git"
+  }
 }

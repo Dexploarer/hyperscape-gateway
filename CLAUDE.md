@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**@hyperscape/plugin-gateway** is an ElizaOS plugin providing unified AI model access through Vercel AI Gateway, OpenRouter, and direct Vercel AI SDK integration. It supports 200+ models across all major providers (OpenAI, Anthropic, Google, Meta, Mistral, xAI, etc.) via a single API key.
+**@dexploarer/plugin-gateway** is an ElizaOS plugin providing unified AI model access through Vercel AI Gateway, OpenRouter, and direct Vercel AI SDK integration. It supports 200+ models across all major providers (OpenAI, Anthropic, Google, Meta, Mistral, xAI, etc.) via a single API key.
 
 ## Commands
 
@@ -19,7 +19,7 @@ bun run lint      # ESLint
 ## Usage
 
 ```typescript
-import { gatewayPlugin } from '@hyperscape/plugin-gateway';
+import { gatewayPlugin } from '@dexploarer/plugin-gateway';
 
 const agent = {
   plugins: [gatewayPlugin],

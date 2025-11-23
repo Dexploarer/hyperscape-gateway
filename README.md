@@ -1,4 +1,4 @@
-# @hyperscape/plugin-gateway
+# @dexploarer/plugin-gateway
 
 Unified AI gateway plugin for ElizaOS providing access to 200+ models across all major providers (OpenAI, Anthropic, Google, Meta, Mistral, xAI, etc.) via Vercel AI Gateway, OpenRouter, or direct Vercel AI SDK.
 
@@ -12,13 +12,13 @@ Unified AI gateway plugin for ElizaOS providing access to 200+ models across all
 ## Installation
 
 ```bash
-bun add @hyperscape/plugin-gateway
+bun add @dexploarer/plugin-gateway
 ```
 
 ## Quick Start
 
 ```typescript
-import { gatewayPlugin } from '@hyperscape/plugin-gateway';
+import { gatewayPlugin } from '@dexploarer/plugin-gateway';
 
 const agent = {
   plugins: [gatewayPlugin],

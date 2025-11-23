@@ -1,5 +1,5 @@
 /**
- * @hyperscape/plugin-gateway
+ * @dexploarer/plugin-gateway
  *
  * Unified AI gateway for ElizaOS using Vercel AI SDK and OpenRouter.
  * Provides model handlers for text generation, embeddings, and images
@@ -7,7 +7,7 @@
  *
  * @example
  * ```typescript
- * import { gatewayPlugin } from '@hyperscape/plugin-gateway';
+ * import { gatewayPlugin } from '@dexploarer/plugin-gateway';
  *
  * const agent = {
  *   plugins: [gatewayPlugin],
@@ -264,7 +264,7 @@ async function handleImage(
  * - Individual provider keys: OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
  */
 export const gatewayPlugin: Plugin = {
-  name: "@hyperscape/plugin-gateway",
+  name: "@dexploarer/plugin-gateway",
   description:
     "Unified AI gateway using Vercel AI SDK and OpenRouter for 200+ models",
 
