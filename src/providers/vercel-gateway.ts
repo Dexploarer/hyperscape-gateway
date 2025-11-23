@@ -4,20 +4,21 @@
  * Unified API endpoint for 200+ AI models with zero markup.
  * https://vercel.com/docs/ai-gateway
  *
+ * The AI SDK automatically routes to AI Gateway when:
+ * - AI_GATEWAY_API_KEY env var is set
+ * - Model is specified as "provider/model" format (e.g., "openai/gpt-4o")
+ *
  * Features:
  * - Single endpoint for all providers (OpenAI, Anthropic, Google, xAI, etc.)
- * - OpenAI-compatible API
+ * - Just pass model string like "openai/gpt-4o" - SDK handles routing
  * - Text, embeddings, and image generation
  * - Automatic retries and load balancing
- * - Bring Your Own Key (BYOK) support
  */
 
 import { generateText, streamText, embed } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
+import { gateway } from "@ai-sdk/gateway";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { TextGenerationParams, EmbeddingParams } from "../types";
-
-const VERCEL_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
 
 /** Models available through Vercel AI Gateway - November 2025 */
 export const VERCEL_GATEWAY_MODELS = {
@@ -58,6 +59,9 @@ export const VERCEL_GATEWAY_MODELS = {
   "deepseek-v3": "deepseek/deepseek-chat",
   "deepseek-r1": "deepseek/deepseek-r1",
 
+  // Cerebras (ultra-fast inference)
+  "gpt-oss-120b": "cerebras/gpt-oss-120b",
+
   // Embeddings
   "text-embedding-3-small": "openai/text-embedding-3-small",
   "text-embedding-3-large": "openai/text-embedding-3-large",
@@ -74,15 +78,16 @@ export const VERCEL_GATEWAY_MODELS = {
   "flux-schnell": "black-forest-labs/flux-schnell",
 } as const;
 
+/** Vercel AI Gateway base URL */
+const VERCEL_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
+
 /**
- * Get Vercel AI Gateway API key from runtime or environment
+ * Get the AI Gateway API key from runtime or environment
  */
-function getVercelGatewayKey(runtime: IAgentRuntime): string {
+function getGatewayKey(runtime: IAgentRuntime): string {
   const key =
     (runtime.getSetting("AI_GATEWAY_API_KEY") as string) ||
-    (runtime.getSetting("VERCEL_AI_GATEWAY_KEY") as string) ||
-    process.env.AI_GATEWAY_API_KEY ||
-    process.env.VERCEL_AI_GATEWAY_KEY;
+    process.env.AI_GATEWAY_API_KEY;
 
   if (!key) {
     throw new Error("Missing AI_GATEWAY_API_KEY for Vercel AI Gateway");
@@ -91,13 +96,10 @@ function getVercelGatewayKey(runtime: IAgentRuntime): string {
 }
 
 /**
- * Create Vercel AI Gateway client using OpenAI-compatible interface
+ * Check if AI Gateway API key is available
  */
-function createVercelGatewayClient(apiKey: string) {
-  return createOpenAI({
-    apiKey,
-    baseURL: VERCEL_GATEWAY_BASE_URL,
-  });
+function ensureGatewayKey(runtime: IAgentRuntime): void {
+  getGatewayKey(runtime);
 }
 
 /**
@@ -111,21 +113,22 @@ function resolveModel(model: string): string {
 
 /**
  * Generate text using Vercel AI Gateway
+ * Just pass model string like "openai/gpt-4o" - SDK handles routing via AI_GATEWAY_API_KEY
  */
 export async function generateTextWithVercelGateway(
   runtime: IAgentRuntime,
   model: string,
   params: TextGenerationParams
 ): Promise<string> {
-  const apiKey = getVercelGatewayKey(runtime);
-  const client = createVercelGatewayClient(apiKey);
+  ensureGatewayKey(runtime);
   const modelId = resolveModel(model);
 
+  // Use @ai-sdk/gateway provider for AI Gateway routing
   const { text } = await generateText({
-    model: client(modelId),
+    model: gateway(modelId),
     prompt: params.prompt,
     system: params.system,
-    maxTokens: params.maxTokens,
+    maxOutputTokens: params.maxTokens,
     temperature: params.temperature,
     topP: params.topP,
     stopSequences: params.stopSequences,
@@ -143,15 +146,15 @@ export async function streamTextWithVercelGateway(
   params: TextGenerationParams,
   onChunk?: (chunk: string) => void
 ): Promise<string> {
-  const apiKey = getVercelGatewayKey(runtime);
-  const client = createVercelGatewayClient(apiKey);
+  ensureGatewayKey(runtime);
   const modelId = resolveModel(model);
 
+  // Use @ai-sdk/gateway provider for AI Gateway routing
   const result = streamText({
-    model: client(modelId),
+    model: gateway(modelId),
     prompt: params.prompt,
     system: params.system,
-    maxTokens: params.maxTokens,
+    maxOutputTokens: params.maxTokens,
     temperature: params.temperature,
     topP: params.topP,
     stopSequences: params.stopSequences,
@@ -168,20 +171,21 @@ export async function streamTextWithVercelGateway(
 
 /**
  * Generate embeddings using Vercel AI Gateway
+ * Just pass model string like "openai/text-embedding-3-small" - SDK handles routing
  */
 export async function generateEmbeddingWithVercelGateway(
   runtime: IAgentRuntime,
   model: string,
   params: EmbeddingParams
 ): Promise<number[]> {
-  const apiKey = getVercelGatewayKey(runtime);
-  const client = createVercelGatewayClient(apiKey);
+  ensureGatewayKey(runtime);
   const modelId = resolveModel(model);
 
   const text = Array.isArray(params.text) ? params.text[0] : params.text;
 
+  // Use @ai-sdk/gateway provider for AI Gateway routing
   const { embedding } = await embed({
-    model: client.textEmbeddingModel(modelId),
+    model: gateway.textEmbeddingModel(modelId),
     value: text,
   });
 
@@ -203,7 +207,7 @@ export async function generateImageWithVercelGateway(
     n?: number;
   }
 ): Promise<string> {
-  const apiKey = getVercelGatewayKey(runtime);
+  const apiKey = getGatewayKey(runtime);
   const modelId = resolveModel(model);
 
   // Use OpenAI-compatible images endpoint
@@ -214,6 +218,7 @@ export async function generateImageWithVercelGateway(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        "ai-gateway-auth-method": "api-key",
       },
       body: JSON.stringify({
         model: modelId,
@@ -247,13 +252,13 @@ export async function generateImageWithMultimodal(
   model: string,
   prompt: string
 ): Promise<string> {
-  const apiKey = getVercelGatewayKey(runtime);
-  const client = createVercelGatewayClient(apiKey);
+  ensureGatewayKey(runtime);
   const modelId = resolveModel(model);
 
   // Multimodal models like Gemini can generate images via text generation
+  // Use @ai-sdk/gateway provider for AI Gateway routing
   const { text } = await generateText({
-    model: client(modelId),
+    model: gateway(modelId),
     prompt: `Generate an image: ${prompt}`,
   });
 

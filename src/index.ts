@@ -57,8 +57,8 @@ const DEFAULT_CONFIG: GatewayConfig = {
   defaultEmbeddingProvider: "vercel-gateway",
   defaultImageProvider: "vercel-gateway",
   models: {
-    textLarge: "claude-sonnet-4",
-    textSmall: "gpt-4o-mini",
+    textLarge: "cerebras/gpt-oss-120b",  // Fast 120B OSS model via Cerebras
+    textSmall: "cerebras/gpt-oss-120b",  // Same model - very fast inference
     embedding: "text-embedding-3-small",
     image: "imagen-3",
   },
@@ -195,21 +195,24 @@ async function handleTextSmall(
  */
 async function handleTextEmbedding(
   runtime: IAgentRuntime,
-  params: { text: string }
+  params: { text: string } | null
 ): Promise<number[]> {
+  // Handle null params (called during initialization to check embedding dimension)
+  const text = params?.text || "test";
+
   const config = getGatewayConfig(runtime);
   const provider = resolveProvider(runtime, config.defaultEmbeddingProvider);
   const model = config.models.embedding || "text-embedding-3-small";
 
   if (provider === "vercel-gateway") {
-    return generateEmbeddingWithVercelGateway(runtime, model, { text: params.text });
+    return generateEmbeddingWithVercelGateway(runtime, model, { text });
   }
 
   if (provider === "openrouter") {
-    return generateEmbeddingWithOpenRouter(runtime, model, { text: params.text });
+    return generateEmbeddingWithOpenRouter(runtime, model, { text });
   }
 
-  return generateEmbeddingWithVercel(runtime, provider, { text: params.text });
+  return generateEmbeddingWithVercel(runtime, provider, { text });
 }
 
 /**
