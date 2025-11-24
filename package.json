@@ -1,6 +1,6 @@
 {
-  "name": "@dexploarer/plugin-gateway",
-  "version": "0.1.0",
+  "name": "@dexploarer/plugin-vercel-ai-gateway",
+  "version": "2.0.0",
   "description": "Unified AI gateway for ElizaOS using Vercel AI SDK and OpenRouter",
   "type": "module",
   "main": "dist/index.js",

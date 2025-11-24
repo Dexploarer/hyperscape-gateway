@@ -1,5 +1,5 @@
 /**
- * @dexploarer/plugin-gateway
+ * @dexploarer/plugin-vercel-ai-gateway
  *
  * Unified AI gateway for ElizaOS using Vercel AI SDK and OpenRouter.
  * Provides model handlers for text generation, embeddings, and images
@@ -7,7 +7,7 @@
  *
  * @example
  * ```typescript
- * import { gatewayPlugin } from '@dexploarer/plugin-gateway';
+ * import { gatewayPlugin } from '@dexploarer/plugin-vercel-ai-gateway';
  *
  * const agent = {
  *   plugins: [gatewayPlugin],
@@ -57,10 +57,10 @@ const DEFAULT_CONFIG: GatewayConfig = {
   defaultEmbeddingProvider: "vercel-gateway",
   defaultImageProvider: "vercel-gateway",
   models: {
-    textLarge: "cerebras/gpt-oss-120b",  // Fast 120B OSS model via Cerebras
-    textSmall: "cerebras/gpt-oss-120b",  // Same model - very fast inference
-    embedding: "text-embedding-3-small",
-    image: "imagen-3",
+    textLarge: "openai/gpt-oss-120b",  // GPT OSS 120B via Vercel AI Gateway (Cerebras-powered)
+    textSmall: "openai/gpt-oss-120b",  // Same model - ultra-fast inference
+    embedding: "openai/text-embedding-3-small", // OpenAI embeddings via Vercel AI Gateway
+    image: "google/imagen-3.0-generate-001", // Google Imagen via Vercel AI Gateway
   },
 };
 
@@ -264,7 +264,7 @@ async function handleImage(
  * - Individual provider keys: OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
  */
 export const gatewayPlugin: Plugin = {
-  name: "@dexploarer/plugin-gateway",
+  name: "@dexploarer/plugin-vercel-ai-gateway",
   description:
     "Unified AI gateway using Vercel AI SDK and OpenRouter for 200+ models",
 
