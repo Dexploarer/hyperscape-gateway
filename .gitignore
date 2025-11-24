@@ -1,31 +1,36 @@
-# Dependencies
-node_modules/
+# dependencies (bun install)
+node_modules
 
-# Build output
-dist/
+# output
+out
+dist
+*.tgz
 
-# Logs
-*.log
-logs/
+# code coverage
+coverage
+*.lcov
 
-# Environment
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
 .env
+.env.development.local
+.env.test.local
+.env.production.local
 .env.local
-.env.*.local
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
 
-# OS
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
 .DS_Store
-Thumbs.db
 
-# Lock files (optional - uncomment if you want to commit)
-# bun.lock
-
-# Test
-coverage/
-.nyc_output/
+.turbo

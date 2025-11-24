@@ -1,299 +1,287 @@
-/**
- * @dexploarer/plugin-vercel-ai-gateway
- *
- * Unified AI gateway for ElizaOS using Vercel AI SDK and OpenRouter.
- * Provides model handlers for text generation, embeddings, and images
- * across all major AI providers.
- *
- * @example
- * ```typescript
- * import { gatewayPlugin } from '@dexploarer/plugin-vercel-ai-gateway';
- *
- * const agent = {
- *   plugins: [gatewayPlugin],
- *   settings: {
- *     secrets: {
- *       OPENROUTER_API_KEY: "your-key",
- *       // Or individual provider keys:
- *       OPENAI_API_KEY: "...",
- *       ANTHROPIC_API_KEY: "...",
- *     },
- *   },
- * };
- * ```
- */
-
-import type { Plugin, IAgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import {
-  generateTextWithOpenRouter,
-  generateEmbeddingWithOpenRouter,
-  generateImageWithOpenRouter,
-  OPENROUTER_MODELS,
-} from "./providers/openrouter";
-import {
-  generateTextWithVercel,
-  generateEmbeddingWithVercel,
-} from "./providers/vercel-ai";
-import {
-  generateTextWithVercelGateway,
-  generateEmbeddingWithVercelGateway,
-  generateImageWithVercelGateway,
-  VERCEL_GATEWAY_MODELS,
-} from "./providers/vercel-gateway";
-import type { GatewayConfig, ModelProviderName } from "./types";
-import { PROVIDER_MODELS, ENV_KEYS } from "./types";
-
-// Re-export types and utilities
-export * from "./types";
-export * from "./providers";
-
-/**
- * Default gateway configuration
- * Uses Vercel AI Gateway by default (zero markup, recommended)
- */
-const DEFAULT_CONFIG: GatewayConfig = {
-  defaultTextProvider: "vercel-gateway",
-  defaultEmbeddingProvider: "vercel-gateway",
-  defaultImageProvider: "vercel-gateway",
-  models: {
-    textLarge: "openai/gpt-oss-120b",  // GPT OSS 120B via Vercel AI Gateway (Cerebras-powered)
-    textSmall: "openai/gpt-oss-120b",  // Same model - ultra-fast inference
-    embedding: "openai/text-embedding-3-small", // OpenAI embeddings via Vercel AI Gateway
-    image: "google/imagen-3.0-generate-001", // Google Imagen via Vercel AI Gateway
-  },
-};
-
-/**
- * Get gateway config from runtime settings
- */
-function getGatewayConfig(runtime: IAgentRuntime): GatewayConfig {
-  const customConfig = runtime.getSetting("GATEWAY_CONFIG") as
-    | Partial<GatewayConfig>
-    | undefined;
-  return { ...DEFAULT_CONFIG, ...customConfig };
-}
-
-/**
- * Determine which provider to use based on config and available keys
- */
-function resolveProvider(
-  runtime: IAgentRuntime,
-  preferredProvider: ModelProviderName
-): ModelProviderName {
-  // Check if preferred provider has a key
-  const envKey = ENV_KEYS[preferredProvider];
-  const hasKey =
-    runtime.getSetting(envKey) || process.env[envKey];
-
-  if (hasKey) return preferredProvider;
-
-  // Fallback to Vercel AI Gateway if available (zero markup, recommended)
-  if (
-    runtime.getSetting("AI_GATEWAY_API_KEY") ||
-    process.env.AI_GATEWAY_API_KEY
-  ) {
-    return "vercel-gateway";
+import type {
+    DetokenizeTextParams,
+    GenerateTextParams,
+    IAgentRuntime,
+    ImageDescriptionParams,
+    ModelTypeName,
+    ObjectGenerationParams,
+    Plugin,
+    TextEmbeddingParams,
+    TokenizeTextParams,
+  } from '@elizaos/core';
+  import { EventType, logger, ModelType } from '@elizaos/core';
+  import { encodingForModel, type TiktokenModel } from 'js-tiktoken';
+  
+  // Import handlers
+  import { handleTextSmall, handleTextLarge } from './handlers/text.js';
+  import { handleTextEmbedding } from './handlers/embedding.js';
+  import { handleObjectSmall, handleObjectLarge } from './handlers/object.js';
+  import { handleImageGeneration, handleImageDescription } from './handlers/image.js';
+  import { handleTranscription } from './handlers/transcription.js';
+  import { handleTextToSpeech } from './handlers/tts.js';
+  
+  // Import utilities
+  import { getAIGatewayConfig, validateConfig } from './utils/config.ts';
+  import { AIGatewayClient } from './utils/client.ts';
+  
+  /**
+   * Tokenize text using tiktoken (similar to OpenAI plugin)
+   */
+  async function tokenizeText(model: ModelTypeName, prompt: string): Promise<number[]> {
+    const modelName = model === ModelType.TEXT_SMALL 
+      ? (process.env.AI_GATEWAY_SMALL_MODEL ?? '@cf/meta/llama-3.1-8b-instruct')
+      : (process.env.AI_GATEWAY_LARGE_MODEL ?? '@cf/meta/llama-3.1-70b-instruct');
+  
+    // Use a compatible tiktoken model for tokenization
+    const encoding = encodingForModel('gpt-4' as TiktokenModel);
+    const tokens = encoding.encode(prompt);
+    return tokens;
   }
-
-  // Fallback to OpenRouter if available
-  if (
-    runtime.getSetting("OPENROUTER_API_KEY") ||
-    process.env.OPENROUTER_API_KEY
-  ) {
-    return "openrouter";
+  
+  /**
+   * Detokenize tokens back to text using tiktoken
+   */
+  async function detokenizeText(model: ModelTypeName, tokens: number[]): Promise<string> {
+    const encoding = encodingForModel('gpt-4' as TiktokenModel);
+    return encoding.decode(tokens);
   }
-
-  // Try other providers
-  for (const provider of Object.keys(ENV_KEYS) as ModelProviderName[]) {
-    const key = ENV_KEYS[provider];
-    if (runtime.getSetting(key) || process.env[key]) {
-      return provider;
-    }
-  }
-
-  return preferredProvider; // Will fail with missing key error
-}
-
-/**
- * TEXT_LARGE model handler
- * Uses the configured large text model (default: claude-sonnet-4 via OpenRouter)
- */
-async function handleTextLarge(
-  runtime: IAgentRuntime,
-  params: {
-    prompt: string;
-    system?: string;
-    maxTokens?: number;
-    temperature?: number;
-    stopSequences?: string[];
-  }
-): Promise<string> {
-  const config = getGatewayConfig(runtime);
-  const provider = resolveProvider(runtime, config.defaultTextProvider);
-  const model = config.models.textLarge || "claude-sonnet-4";
-
-  const textParams = {
-    prompt: params.prompt,
-    system: params.system,
-    maxTokens: params.maxTokens || 8192,
-    temperature: params.temperature || 0.7,
-    stopSequences: params.stopSequences,
+  
+  /**
+   * AI Gateway Plugin for ElizaOS
+   */
+  export const aiGatewayPlugin: Plugin = {
+    name: 'ai-gateway',
+    description: 'AI Gateway plugin with OpenAI compatible endpoints',
+    config: {
+      AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
+      AI_GATEWAY_BASE_URL: process.env.AI_GATEWAY_BASE_URL,
+      AI_GATEWAY_OPENAI_COMPATIBLE_URL: process.env.AI_GATEWAY_OPENAI_COMPATIBLE_URL,
+      AI_GATEWAY_SMALL_MODEL: process.env.AI_GATEWAY_SMALL_MODEL,
+      AI_GATEWAY_LARGE_MODEL: process.env.AI_GATEWAY_LARGE_MODEL,
+      AI_GATEWAY_EMBEDDING_MODEL: process.env.AI_GATEWAY_EMBEDDING_MODEL,
+      AI_GATEWAY_IMAGE_MODEL: process.env.AI_GATEWAY_IMAGE_MODEL,
+      AI_GATEWAY_ACCOUNT_ID: process.env.AI_GATEWAY_ACCOUNT_ID,
+      AI_GATEWAY_WORKSPACE: process.env.AI_GATEWAY_WORKSPACE,
+    },
+  
+    async init(_config, runtime) {
+      // Background initialization and validation
+      new Promise<void>(async (resolve) => {
+        resolve();
+        try {
+          const config = getAIGatewayConfig(runtime);
+          validateConfig(config);
+  
+          const client = new AIGatewayClient(config);
+          const isConnected = await client.testConnection();
+  
+          if (isConnected) {
+            logger.log('[AI Gateway] Plugin initialized successfully');
+          } else {
+            logger.warn('[AI Gateway] Connection test failed - functionality may be limited');
+          }
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.warn(`[AI Gateway] Plugin initialization issue: ${message}`);
+        }
+      });
+    },
+  
+    models: {
+      // Text embedding model
+      [ModelType.TEXT_EMBEDDING]: async (
+        runtime: IAgentRuntime,
+        params: TextEmbeddingParams | string | null
+      ): Promise<number[]> => {
+        return handleTextEmbedding(runtime, params);
+      },
+  
+      // Text tokenizer encode
+      [ModelType.TEXT_TOKENIZER_ENCODE]: async (
+        _runtime: IAgentRuntime,
+        { prompt, modelType = ModelType.TEXT_LARGE }: TokenizeTextParams
+      ): Promise<number[]> => {
+        return tokenizeText(modelType ?? ModelType.TEXT_LARGE, prompt);
+      },
+  
+      // Text tokenizer decode
+      [ModelType.TEXT_TOKENIZER_DECODE]: async (
+        _runtime: IAgentRuntime,
+        { tokens, modelType = ModelType.TEXT_LARGE }: DetokenizeTextParams
+      ): Promise<string> => {
+        return detokenizeText(modelType ?? ModelType.TEXT_LARGE, tokens);
+      },
+  
+      // Small text model
+      [ModelType.TEXT_SMALL]: async (
+        runtime: IAgentRuntime,
+        params: GenerateTextParams
+      ): Promise<string> => {
+        return handleTextSmall(runtime, params);
+      },
+  
+      // Large text model
+      [ModelType.TEXT_LARGE]: async (
+        runtime: IAgentRuntime,
+        params: GenerateTextParams
+      ): Promise<string> => {
+        return handleTextLarge(runtime, params);
+      },
+  
+      // Image generation
+      [ModelType.IMAGE]: async (
+        runtime: IAgentRuntime,
+        params: {
+          prompt: string;
+          n?: number;
+          size?: string;
+        }
+      ): Promise<Array<{ url: string }>> => {
+        return handleImageGeneration(runtime, params);
+      },
+  
+      // Image description
+      [ModelType.IMAGE_DESCRIPTION]: async (
+        runtime: IAgentRuntime,
+        params: ImageDescriptionParams | string
+      ): Promise<string | { title: string; description: string }> => {
+        return handleImageDescription(runtime, params);
+      },
+  
+      // Audio transcription
+      [ModelType.TRANSCRIPTION]: async (
+        runtime: IAgentRuntime,
+        audioBuffer: Buffer
+      ): Promise<string> => {
+        return handleTranscription(runtime, audioBuffer);
+      },
+  
+      // Text to speech
+      [ModelType.TEXT_TO_SPEECH]: async (
+        runtime: IAgentRuntime,
+        text: string
+      ): Promise<ReadableStream | null> => {
+        return handleTextToSpeech(runtime, text);
+      },
+  
+      // Object generation - small model
+      [ModelType.OBJECT_SMALL]: async (
+        runtime: IAgentRuntime,
+        params: ObjectGenerationParams
+      ): Promise<any> => {
+        return handleObjectSmall(runtime, params);
+      },
+  
+      // Object generation - large model
+      [ModelType.OBJECT_LARGE]: async (
+        runtime: IAgentRuntime,
+        params: ObjectGenerationParams
+      ): Promise<any> => {
+        return handleObjectLarge(runtime, params);
+      },
+    },
+  
+    tests: [
+      {
+        name: 'ai_gateway_plugin_tests',
+        tests: [
+          {
+            name: 'ai_gateway_test_connection',
+            fn: async (runtime: IAgentRuntime) => {
+              const config = getAIGatewayConfig(runtime);
+              const client = new AIGatewayClient(config);
+              const isConnected = await client.testConnection();
+  
+              if (!isConnected) {
+                throw new Error('Failed to connect to AI Gateway');
+              }
+  
+              logger.log('[AI Gateway] Connection test passed');
+            },
+          },
+          {
+            name: 'ai_gateway_test_text_embedding',
+            fn: async (runtime: IAgentRuntime) => {
+              try {
+                const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+                  text: 'Hello, AI Gateway!',
+                });
+  
+                if (!Array.isArray(embedding) || embedding.length === 0) {
+                  throw new Error('Invalid embedding response');
+                }
+  
+                logger.log({ embedding: embedding.slice(0, 5) }, 'AI Gateway embedding test');
+              } catch (error: unknown) {
+                const message = error instanceof Error ? error.message : String(error);
+                logger.error(`Error in AI Gateway embedding test: ${message}`);
+                throw error;
+              }
+            },
+          },
+          {
+            name: 'ai_gateway_test_text_large',
+            fn: async (runtime: IAgentRuntime) => {
+              try {
+                const text = await runtime.useModel(ModelType.TEXT_LARGE, {
+                  prompt: 'What is artificial intelligence in 10 words?',
+                });
+  
+                if (!text || text.length === 0) {
+                  throw new Error('Failed to generate text');
+                }
+  
+                logger.log({ text }, 'AI Gateway text generation test');
+              } catch (error: unknown) {
+                const message = error instanceof Error ? error.message : String(error);
+                logger.error(`Error in AI Gateway text test: ${message}`);
+                throw error;
+              }
+            },
+          },
+          {
+            name: 'ai_gateway_test_text_small',
+            fn: async (runtime: IAgentRuntime) => {
+              try {
+                const text = await runtime.useModel(ModelType.TEXT_SMALL, {
+                  prompt: 'Say hello in 5 words.',
+                });
+  
+                if (!text || text.length === 0) {
+                  throw new Error('Failed to generate text');
+                }
+  
+                logger.log({ text }, 'AI Gateway small text test');
+              } catch (error: unknown) {
+                const message = error instanceof Error ? error.message : String(error);
+                logger.error(`Error in AI Gateway small text test: ${message}`);
+                throw error;
+              }
+            },
+          },
+          {
+            name: 'ai_gateway_test_object_generation',
+            fn: async (runtime: IAgentRuntime) => {
+              try {
+                const obj = await runtime.useModel(ModelType.OBJECT_SMALL, {
+                  prompt: 'Generate a person object with name and age properties',
+                });
+  
+                if (!obj || typeof obj !== 'object') {
+                  throw new Error('Failed to generate object');
+                }
+  
+                logger.log({ obj }, 'AI Gateway object generation test');
+              } catch (error: unknown) {
+                const message = error instanceof Error ? error.message : String(error);
+                logger.error(`Error in AI Gateway object test: ${message}`);
+                throw error;
+              }
+            },
+          },
+        ],
+      },
+    ],
   };
-
-  if (provider === "vercel-gateway") {
-    return generateTextWithVercelGateway(runtime, model, textParams);
-  }
-
-  if (provider === "openrouter") {
-    return generateTextWithOpenRouter(runtime, model, textParams);
-  }
-
-  return generateTextWithVercel(runtime, provider, "textLarge", textParams);
-}
-
-/**
- * TEXT_SMALL model handler
- * Uses the configured small text model (default: gpt-4o-mini via OpenRouter)
- */
-async function handleTextSmall(
-  runtime: IAgentRuntime,
-  params: {
-    prompt: string;
-    system?: string;
-    maxTokens?: number;
-    temperature?: number;
-    stopSequences?: string[];
-  }
-): Promise<string> {
-  const config = getGatewayConfig(runtime);
-  const provider = resolveProvider(runtime, config.defaultTextProvider);
-  const model = config.models.textSmall || "gpt-4o-mini";
-
-  const textParams = {
-    prompt: params.prompt,
-    system: params.system,
-    maxTokens: params.maxTokens || 4096,
-    temperature: params.temperature || 0.7,
-    stopSequences: params.stopSequences,
-  };
-
-  if (provider === "vercel-gateway") {
-    return generateTextWithVercelGateway(runtime, model, textParams);
-  }
-
-  if (provider === "openrouter") {
-    return generateTextWithOpenRouter(runtime, model, textParams);
-  }
-
-  return generateTextWithVercel(runtime, provider, "textSmall", textParams);
-}
-
-/**
- * TEXT_EMBEDDING model handler
- * Uses the configured embedding model (default: text-embedding-3-small via OpenRouter)
- */
-async function handleTextEmbedding(
-  runtime: IAgentRuntime,
-  params: { text: string } | null
-): Promise<number[]> {
-  // Handle null params (called during initialization to check embedding dimension)
-  const text = params?.text || "test";
-
-  const config = getGatewayConfig(runtime);
-  const provider = resolveProvider(runtime, config.defaultEmbeddingProvider);
-  const model = config.models.embedding || "text-embedding-3-small";
-
-  if (provider === "vercel-gateway") {
-    return generateEmbeddingWithVercelGateway(runtime, model, { text });
-  }
-
-  if (provider === "openrouter") {
-    return generateEmbeddingWithOpenRouter(runtime, model, { text });
-  }
-
-  return generateEmbeddingWithVercel(runtime, provider, { text });
-}
-
-/**
- * IMAGE model handler
- * Uses the configured image model (default: Google Imagen 3 via gateway)
- */
-async function handleImage(
-  runtime: IAgentRuntime,
-  params: {
-    prompt: string;
-    size?: string;
-    quality?: string;
-    n?: number;
-  }
-): Promise<string> {
-  const config = getGatewayConfig(runtime);
-  const provider = resolveProvider(runtime, config.defaultImageProvider);
-  const model = config.models.image || "imagen-3";
-
-  const imageOptions = {
-    size: params.size,
-    quality: params.quality,
-    n: params.n,
-  };
-
-  if (provider === "vercel-gateway") {
-    return generateImageWithVercelGateway(runtime, model, params.prompt, imageOptions);
-  }
-
-  return generateImageWithOpenRouter(runtime, model, params.prompt, imageOptions);
-}
-
-/**
- * Hyperscape Gateway Plugin
- *
- * Provides unified AI model access through Vercel AI Gateway, OpenRouter,
- * and direct Vercel AI SDK integration. Supports 200+ models across all major providers.
- *
- * Supported model types:
- * - TEXT_LARGE: Large language models (Claude, GPT-4, Gemini, Llama)
- * - TEXT_SMALL: Fast, efficient models (GPT-4o-mini, Haiku, Gemini Flash)
- * - TEXT_EMBEDDING: Text embeddings (OpenAI, Cohere)
- * - IMAGE: Image generation (Google Imagen, DALL-E, FLUX)
- *
- * Configuration via runtime settings:
- * - AI_GATEWAY_API_KEY: Vercel AI Gateway key (recommended - zero markup)
- * - OPENROUTER_API_KEY: OpenRouter API key (single key for all providers)
- * - GATEWAY_CONFIG: Custom gateway configuration object
- * - Individual provider keys: OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
- */
-export const gatewayPlugin: Plugin = {
-  name: "@dexploarer/plugin-vercel-ai-gateway",
-  description:
-    "Unified AI gateway using Vercel AI SDK and OpenRouter for 200+ models",
-
-  // Register model handlers
-  models: {
-    [ModelType.TEXT_LARGE]: handleTextLarge,
-    [ModelType.TEXT_SMALL]: handleTextSmall,
-    [ModelType.TEXT_EMBEDDING]: handleTextEmbedding,
-    [ModelType.IMAGE]: handleImage,
-  },
-
-  // No actions needed
-  actions: [],
-
-  // No providers needed
-  providers: [],
-
-  // No evaluators needed
-  evaluators: [],
-
-  // No services needed
-  services: [],
-
-  // No events needed
-  events: {},
-};
-
-// Default export
-export default gatewayPlugin;
-
-// Re-export model mappings for convenience
-export { OPENROUTER_MODELS, VERCEL_GATEWAY_MODELS, PROVIDER_MODELS, ENV_KEYS };
+  
+  export default aiGatewayPlugin;
